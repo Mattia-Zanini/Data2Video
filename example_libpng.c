@@ -1,8 +1,18 @@
-// Per compilare aggiungere "-lpng"
+// Per compilare aggiungere "-lpng" su linux
+// Su MacOS bisogna dire dove si trovano gli header e le librerie, con
+// l'installazione delle librerie tramite homebrew quindi il comando diventa
+// così "clang example_libpng.c -o example -I/opt/homebrew/include
+// -L/opt/homebrew/lib -lpng -lz"
 
-#include <png.h> // Include per usare le funzioni della libreria libspng
+#include <png.h> // Include per usare le funzioni della libreria libpng
 #include <stdio.h> // Include per funzioni di input/output come fopen, fclose, etc.
 #include <stdlib.h> // Include per funzioni di allocazione dinamica e gestione di memoria
+
+#define ERROR_PNG_STRUCT_READ_CREATION 2
+#define ERROR_PNG_STRUCT_WRITE_CREATION 3
+#define ERROR_PNG_INFO_STRUCT_CREATION 4
+#define ERROR_PNG_READ_ELABORATION 5
+#define ERROR_PNG_WRITE_ELABORATION 6
 
 // Variabili globali per larghezza, altezza e proprietà dell'immagine PNG
 int width, height;
@@ -14,26 +24,41 @@ png_bytep *row_pointers = NULL; // Puntatore per le righe dell'immagine
 void read_png_file(char *filename) {
   FILE *fp = fopen(filename, "rb"); // Apre il file PNG in modalità binaria
 
+  if (!fp)
+    exit(EXIT_FAILURE);
+
   // Crea una struttura per leggere il PNG
-  // PNG_LIBPNG_VER_STRING viene automaticamente definita dalla libreria e riflette la versione corretta della libpng in uso. Non è necessario definire manualmente questa stringa.
-  png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+  // PNG_LIBPNG_VER_STRING viene automaticamente definita dalla libreria e
+  // riflette la versione corretta della libpng in uso. Non è necessario
+  // definire manualmente questa stringa.
+  png_structp png =
+      png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
   if (!png)
-    abort(); // Termina se la struttura non viene creata
+    exit(ERROR_PNG_STRUCT_READ_CREATION); // Termina se la struttura non viene
+                                          // creata
 
   // Crea una struttura per le informazioni del PNG
   png_infop info = png_create_info_struct(png);
   if (!info)
-    abort(); // Termina se non si riesce a creare la struttura delle info
+    exit(ERROR_PNG_INFO_STRUCT_CREATION); // Termina se non si riesce a
+                                          // creare la struttura delle info
 
   // Imposta il salto in caso di errore
-  // Questa riga imposta un punto di ritorno nel caso si verifichi un errore durante l'elaborazione dei file PNG. Se si verifica un errore, libpng può "saltare" a questo punto utilizzando longjmp, e da lì il programma può gestire l'errore senza crashare.
-  if (setjmp(png_jmpbuf(png)))
-    abort();
+  // Questa riga imposta un punto di ritorno nel caso si verifichi un errore
+  // durante l'elaborazione dei file PNG. Se si verifica un errore, libpng può
+  // "saltare" a questo punto utilizzando longjmp, e da lì il programma può
+  // gestire l'errore senza crashare.
+  if (setjmp(png_jmpbuf(png))) {
+    png_destroy_read_struct(&png, &info, NULL);
+    fclose(fp);
+    exit(ERROR_PNG_READ_ELABORATION);
+  }
 
   // Inizializza la lettura del file PNG
   png_init_io(png, fp);
 
-  // Legge le informazioni principali sull'immagine (dimensioni, tipo di colore, ecc.)
+  // Legge le informazioni principali sull'immagine (dimensioni, tipo di colore,
+  // ecc.)
   png_read_info(png, info);
 
   // Estrae le proprietà dell'immagine
@@ -78,7 +103,7 @@ void read_png_file(char *filename) {
         (png_byte *)malloc(png_get_rowbytes(png, info)); // Alloca una riga
   }
 
-  // Legge i pixel dell'immagine nel buffer `row_pointers`
+  // Legge i pixel dell'immagine nel buffer 'row_pointers'
   png_read_image(png, row_pointers);
 
   // Chiude il file
@@ -90,23 +115,28 @@ void read_png_file(char *filename) {
 
 // Funzione per scrivere un file PNG
 void write_png_file(char *filename) {
-  FILE *fp = fopen(filename, "wb"); // Apre il file per la scrittura in modalità binaria
+  FILE *fp = fopen(filename,
+                   "wb"); // Apre il file per la scrittura in modalità binaria
   if (!fp)
-    abort();
+    exit(EXIT_FAILURE);
 
   // Crea una struttura per scrivere il PNG
-  png_structp png = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+  png_structp png =
+      png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
   if (!png)
-    abort();
+    exit(ERROR_PNG_STRUCT_WRITE_CREATION);
 
   // Crea una struttura per le informazioni del PNG
   png_infop info = png_create_info_struct(png);
   if (!info)
-    abort();
+    exit(ERROR_PNG_INFO_STRUCT_CREATION);
 
   // Imposta il salto in caso di errore
-  if (setjmp(png_jmpbuf(png)))
-    abort();
+  if (setjmp(png_jmpbuf(png))) {
+    png_destroy_write_struct(&png, &info);
+    fclose(fp);
+    exit(ERROR_PNG_WRITE_ELABORATION);
+  }
 
   // Inizializza l'output per scrivere nel file
   png_init_io(png, fp);
@@ -150,7 +180,8 @@ void process_png_file() {
     for (int x = 0; x < width; x++) {
       png_bytep px = &(row[x * 4]); // Ottiene il pixel (formato RGBA)
       // Qui è possibile eseguire operazioni sui pixel
-      printf("%4d, %4d = RGBA(%3d, %3d, %3d, %3d)\n", x, y, px[0], px[1], px[2], px[3]);
+      printf("%4d, %4d = RGBA(%3d, %3d, %3d, %3d)\n", x, y, px[0], px[1], px[2],
+             px[3]);
     }
   }
 }
@@ -158,10 +189,11 @@ void process_png_file() {
 // Funzione principale
 int main(int argc, char *argv[]) {
   if (argc != 2)
-    abort(); // Verifica che ci siano 2 argomenti (programma, file input)
+    exit(EXIT_FAILURE); // Verifica che ci siano 2 argomenti (programma, file
+                        // input)
 
-  read_png_file(argv[1]);  // Legge il file PNG di input
-  process_png_file();      // Processa l'immagine
+  read_png_file(argv[1]); // Legge il file PNG di input
+  process_png_file();     // Processa l'immagine
   if (argc == 3) {
     write_png_file(argv[2]); // Scrive l'immagine su file di output
   }
