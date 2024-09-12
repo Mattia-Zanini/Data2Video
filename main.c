@@ -2,7 +2,7 @@
  * Su MacOS bisogna dire dove si trovano gli header e le librerie, con
  * l'installazione delle librerie tramite homebrew quindi il comando diventa
  * così "clang example_libpng.c -o example -I/opt/homebrew/include
- * -L/opt/homebrew/lib -lpng -lz"
+ * -L/opt/homebrew/lib -lpng -lz -lc"
  */
 
 /* Utilizzo i primi 4 byte di un immagine per definire in maniera precisa quando
