@@ -175,12 +175,13 @@ void write_png_file(char *filename) {
 
 // Funzione per processare l'immagine (modifica pixel se necessario)
 void process_png_file() {
+  printf("Column, Row, RGBA\n");
   for (int y = 0; y < height; y++) {
     png_bytep row = row_pointers[y]; // Ottiene una riga
     for (int x = 0; x < width; x++) {
       png_bytep px = &(row[x * 4]); // Ottiene il pixel (formato RGBA)
       // Qui è possibile eseguire operazioni sui pixel
-      printf("%4d, %4d = RGBA(%3d, %3d, %3d, %3d)\n", x, y, px[0], px[1], px[2],
+      printf("%d, %4d = RGBA(%3d, %3d, %3d, %3d)\n", x, y, px[0], px[1], px[2],
              px[3]);
     }
   }

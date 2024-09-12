@@ -220,8 +220,9 @@ uint8_t *read_buffered_file(FILE *fp, uint16_t *byte_to_reads) {
   return buffer;
 }
 
-// No k non è corretto, perchè non ho tenuto conto degli 8 bytes iniziali di
-// ogni immagine per indicare il frame corrente
+// Allora in teoria ora sembra funzionare, ma va rivisitato perchè ho
+// "sistemato" il tutto togliendo 1 all'ultima riga e colonna, ma non penso che
+// sia il modo corretto
 header_info_t predict_last_data_position(const long file_size_with_header,
                                          const uint8_t extension_length) {
   header_info_t info;
@@ -261,8 +262,8 @@ header_info_t predict_last_data_position(const long file_size_with_header,
   // 0 = alpha, 1 = red, 2 = green, 3 = blue
   const uint8_t last_channel = remaining_bytes_last_row;
 
-  info.last_byte_column = last_column;
-  info.last_byte_row = last_row;
+  info.last_byte_column = last_column - 1;
+  info.last_byte_row = last_row - 1;
   // posiziono i bit che rappresentano l'ultimo canale nei bit più
   // significativi, stabilito dalla formattazione
   info.last_channel_and_extension_length = last_channel << 6;
@@ -329,8 +330,7 @@ void write_png_file(char *filename) {
   png_write_image(png, row_pointers);
   png_write_end(png, NULL); // Termina la scrittura
 
-  // Libera la memoria dell'immagine
-  free(image_data);
+  // Chiudo il file di output
   fclose(fp);
 
   // Libera le strutture allocate per la scrittura dell'immagine
@@ -338,7 +338,7 @@ void write_png_file(char *filename) {
 }
 
 // da finire
-void convert_file(FILE *fp, const char *filename, char *output) {
+void convert_file(FILE *fp, const char *filename, char *base_output_filename) {
   // Alloca un array unidimensionale per memorizzare tutti i bytes dell'immagine
   image_data = (png_bytep)malloc(width * height * BYTES_PER_PIXEL);
 
@@ -486,17 +486,16 @@ void convert_file(FILE *fp, const char *filename, char *output) {
         image_data[byte_pointer++] = buffer[j];
       free(buffer);
     }
+
+    for (uint32_t i = 0; i < HEADER_INFO_LENGTH + ext_length; i++) {
+      printf("[%7d]: %3u -> %s -> %02X\n", i, image_data[i],
+             uint8_t_to_binary_string(image_data[i]), image_data[i]);
+    }
+    write_png_file(base_output_filename);
   }
 
-  /*for (uint32_t i = 0; i < 4096 * 1000 + 23; i++) {
-    printf("[%7d]: %3u -> %s -> %02X\n", i, image_data[i],
-           uint8_t_to_binary_string(image_data[i]), image_data[i]);
-  }*/
-  // exit(EXIT_SUCCESS);
-
-  write_png_file(output);
-  // free(image_data);
-  // fclose(fp);
+  free(image_data);
+  fclose(fp);
 }
 
 // Non serve a molto questa funzione, è solo per debug
