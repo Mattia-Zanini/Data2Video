@@ -112,8 +112,6 @@ char *uint8_t_to_binary_string(uint8_t value) {
     // Se il bit corrente (in 'i') è settato in 'value', allora l'espressione
     // restituisce 1, altrimenti inserisce '0'.
     binary_str[index] = (value & i) ? '1' : '0';
-
-    // Incrementa l'indice per posizionare il prossimo bit nella stringa.
     index++;
   }
 
@@ -220,21 +218,6 @@ char *get_extension_string(const char *filename) {
 uint8_t *read_buffered_file(FILE *fp, uint16_t *byte_to_reads) {
   uint8_t *buffer = (uint8_t *)malloc(*byte_to_reads);
   const unsigned long byte_reads = fread(buffer, 1, *byte_to_reads, fp);
-
-  // è da cambiare in quanto non è detto che i bytes da leggere occupino
-  // perfettamento un pixel
-  /*pixel_t *pixels_buffered = (pixel_t *)malloc(BUFFER_SIZE);
-  uint16_t pxpointer = 0;
-  for (int i = 0; i < BUFFER_SIZE; i += 4) {
-    pixels_buffered[pxpointer].r = buffer[i];
-    pixels_buffered[pxpointer].g = buffer[i + 1];
-    pixels_buffered[pxpointer].b = buffer[i + 2];
-    pixels_buffered[pxpointer].a = buffer[i + 3];
-
-    pxpointer++;
-  }
-  *pixel_pointer = pxpointer;
-  free(buffer);*/
   return buffer;
 }
 
@@ -368,112 +351,83 @@ void convert_file(FILE *fp, const char *filename) {
       // Volendo posso mettere questi byte in un unico array e poi usare un loop
       // per inserirli nella matrice dell'immagine, però tanto vale scrivere
       // manualmente le assegnazioni
+      uint8_t byte_index = 0;
 
-      uint8_t col = 0, row = 0;
-      png_byte *first_pixel =
-          &(image_data[calculate_offset(row, col) * BYTES_PER_PIXEL]);
-      printf("Row: %u, Column: %u\n", row, col);
-      col++;
+      image_data[byte_index++] = data_formatted_splitted[0];
+      image_data[byte_index++] = data_formatted_splitted[1];
+      image_data[byte_index++] = data_formatted_splitted[2];
+      image_data[byte_index++] = data_formatted_splitted[3];
 
-      png_byte *second_pixel =
-          &(image_data[calculate_offset(row, col) * BYTES_PER_PIXEL]);
-      printf("Row: %u, Column: %u\n", row, col);
-      col++;
+      image_data[byte_index++] = total_frames_splitted[0];
+      image_data[byte_index++] = total_frames_splitted[1];
+      image_data[byte_index++] = total_frames_splitted[2];
+      image_data[byte_index++] = total_frames_splitted[3];
+      image_data[byte_index++] = total_frames_splitted[4];
+      image_data[byte_index++] = total_frames_splitted[5];
+      image_data[byte_index++] = total_frames_splitted[6];
+      image_data[byte_index++] = total_frames_splitted[7];
 
-      png_byte *third_pixel =
-          &(image_data[calculate_offset(row, col) * BYTES_PER_PIXEL]);
-      printf("Row: %u, Column: %u\n", row, col);
-      col++;
-
-      png_byte *fourth_pixel =
-          &(image_data[calculate_offset(row, col) * BYTES_PER_PIXEL]);
-      printf("Row: %u, Column: %u\n", row, col);
-      col++;
-
-      png_byte *fifth_pixel =
-          &(image_data[calculate_offset(row, col) * BYTES_PER_PIXEL]);
-      printf("Row: %u, Column: %u\n", row, col);
-      col++;
-
-      first_pixel[0] = data_formatted_splitted[0];
-      first_pixel[1] = data_formatted_splitted[1];
-      first_pixel[2] = data_formatted_splitted[2];
-      first_pixel[3] = data_formatted_splitted[3];
-
-      second_pixel[0] = total_frames_splitted[0];
-      second_pixel[1] = total_frames_splitted[1];
-      second_pixel[2] = total_frames_splitted[2];
-      second_pixel[3] = total_frames_splitted[3];
-
-      third_pixel[0] = total_frames_splitted[4];
-      third_pixel[1] = total_frames_splitted[5];
-      third_pixel[2] = total_frames_splitted[6];
-      third_pixel[3] = total_frames_splitted[7];
-
-      fourth_pixel[0] = last_frame_splitted[0];
-      fourth_pixel[1] = last_frame_splitted[1];
-      fourth_pixel[2] = last_frame_splitted[2];
-      fourth_pixel[3] = last_frame_splitted[3];
-
-      fifth_pixel[0] = last_frame_splitted[4];
-      fifth_pixel[1] = last_frame_splitted[5];
-      fifth_pixel[2] = last_frame_splitted[6];
-      fifth_pixel[3] = last_frame_splitted[7];
+      image_data[byte_index++] = last_frame_splitted[0];
+      image_data[byte_index++] = last_frame_splitted[1];
+      image_data[byte_index++] = last_frame_splitted[2];
+      image_data[byte_index++] = last_frame_splitted[3];
+      image_data[byte_index++] = last_frame_splitted[4];
+      image_data[byte_index++] = last_frame_splitted[5];
+      image_data[byte_index++] = last_frame_splitted[6];
+      image_data[byte_index++] = last_frame_splitted[7];
 
       current_frame_bytes_to_read -= HEADER_INFO_LENGTH;
 
       char *ext_str = get_extension_string(filename);
       printf("Extension: %s\n", ext_str);
       printf("Extension Length: %u\n", ext_length);
-      uint8_t extension_chars_left = ext_length;
-      uint8_t n = 0;
-      uint8_t pixels_needed_for_extension =
-          ceil((double)ext_length / BYTES_PER_PIXEL);
-      for (uint8_t pixel_index = 0; pixel_index < pixels_needed_for_extension;
-           pixel_index++) {
-        // Parto dal sesto pixel perchè i primi 5 sono già stati appena
-        // utilizzati
-        png_byte *px =
-            &(image_data[calculate_offset(row, col) * BYTES_PER_PIXEL]);
-        col++;
-
-        if (BYTES_PER_PIXEL > extension_chars_left)
-          n = extension_chars_left;
-        else
-          n = BYTES_PER_PIXEL;
-
-        for (uint8_t i = 0; i < n; i++) {
-          px[i] = ext_str[ext_length - extension_chars_left];
-          extension_chars_left--;
-        }
-      }
+      for (uint8_t i = 0; i < ext_length; i++)
+        image_data[byte_index++] = ext_str[i];
 
       current_frame_bytes_to_read -= ext_length;
 
-      for (int i = 0; i < 23; i++) {
-        printf("[%2d]: %3u -> %s\n", i, image_data[i],
-               uint8_t_to_binary_string(image_data[i]));
+      data_formatted_splitted = NULL;
+      total_frames_splitted = NULL;
+      last_frame_splitted = NULL;
+
+      /*for (int i = 0; i < 23; i++) {
+        printf("[%5d]: %3u -> %s -> %02X\n", i, image_data[i],
+               uint8_t_to_binary_string(image_data[i]), image_data[i]);
       }
-      // break;
+      exit(EXIT_SUCCESS);*/
     }
 
     // Numero di buffers necessari per leggere i rimanenti bytes
-    uint16_t total_buffers = ceil((double)remaining_bytes / BUFFER_SIZE);
+    uint16_t total_buffers =
+        ceil((double)current_frame_bytes_to_read / BUFFER_SIZE);
+    printf("Total buffers: %u\n", total_buffers);
     uint8_t *buffer = NULL;
+    uint16_t byte_to_reads = 0;
+    // punto al byte successivo a tutte le informazioni iniziali
+    uint32_t byte_pointer = (chunk == 0) ? HEADER_INFO_LENGTH + ext_length : 0;
     for (uint16_t i = 0; i < total_buffers; i++) {
-      uint16_t byte_to_reads = 0;
-      // uint16_t pixel_pointer = 0;
-
       // leggo al massimo 4096 byte, se ce ne sono meno leggo solo quelli che
       // rimangono
-      if (BUFFER_SIZE > remaining_bytes)
-        byte_to_reads = remaining_bytes;
+      if (BUFFER_SIZE > current_frame_bytes_to_read)
+        byte_to_reads = current_frame_bytes_to_read;
       else
         byte_to_reads = BUFFER_SIZE;
 
       buffer = read_buffered_file(fp, &byte_to_reads);
+      current_frame_bytes_to_read -= byte_to_reads;
+
+      // salvo il buffer di dati che ho appena letto
+      for (uint16_t j = 0; j < byte_to_reads; j++)
+        image_data[byte_pointer++] = buffer[j];
+      free(buffer);
     }
   }
+
+  for (uint32_t i = 0; i < 8215; i++) {
+    printf("[%5d]: %3u -> %s -> %02X\n", i, image_data[i],
+           uint8_t_to_binary_string(image_data[i]), image_data[i]);
+  }
+  // exit(EXIT_SUCCESS);
 
   // printf("Totale pixels: %d\n", pixel_pointer);
   /*for (int i = 0; i < pixel_pointer; i++) {
@@ -481,16 +435,6 @@ void convert_file(FILE *fp, const char *filename) {
            pixels_buffered[i].g, pixels_buffered[i].b, pixels_buffered[i].a);
   }*/
 
-  // Libera la memoria delle righe allocate
-  // for (int y = 0; y < height; y++) {
-  //   free(row_pointers[y]); // Dealloca ogni riga
-  // }
-  // free(row_pointers); // Dealloca il puntatore alle righe
-
-  /*if (!pixels_buffered) {
-    // free(pixels_buffered);
-    pixels_buffered = NULL;
-  }*/
   free(image_data);
   fclose(fp);
 }
@@ -653,6 +597,7 @@ int main(int argc, char *argv[]) {
   // printf("Extension length: %d\n", get_extension_length(argv[1]));
   // printf("Extension name: %s\n", get_extension_string(argv[1]));
   // printf("Stringa randomica: %s\n", generate_random_string(10));
+  printf("Dimensione del file = %lu bytes\n", get_file_size(fp));
   convert_file(fp, argv[1]);
 
   /*
