@@ -217,12 +217,13 @@ char *get_extension_string(const char *filename) {
   return ext_string;
 }
 
-pixel_t *read_buffered_file(FILE *fp, uint16_t *byte_reads,
-                            uint16_t *pixel_pointer) {
-  uint8_t *buffer = (uint8_t *)malloc(BUFFER_SIZE);
-  *byte_reads = fread(buffer, 1, BUFFER_SIZE, fp);
+uint8_t *read_buffered_file(FILE *fp, uint16_t *byte_to_reads) {
+  uint8_t *buffer = (uint8_t *)malloc(*byte_to_reads);
+  const unsigned long byte_reads = fread(buffer, 1, *byte_to_reads, fp);
 
-  pixel_t *pixels_buffered = (pixel_t *)malloc(BUFFER_SIZE);
+  // è da cambiare in quanto non è detto che i bytes da leggere occupino
+  // perfettamento un pixel
+  /*pixel_t *pixels_buffered = (pixel_t *)malloc(BUFFER_SIZE);
   uint16_t pxpointer = 0;
   for (int i = 0; i < BUFFER_SIZE; i += 4) {
     pixels_buffered[pxpointer].r = buffer[i];
@@ -233,8 +234,8 @@ pixel_t *read_buffered_file(FILE *fp, uint16_t *byte_reads,
     pxpointer++;
   }
   *pixel_pointer = pxpointer;
-  free(buffer);
-  return pixels_buffered;
+  free(buffer);*/
+  return buffer;
 }
 
 // No k non è corretto, perchè non ho tenuto conto degli 8 bytes iniziali di
@@ -312,7 +313,7 @@ void convert_file(FILE *fp, const char *filename) {
   header_info.last_byte_column = 0;
   header_info.last_byte_row = 0;
   header_info.last_channel_and_extension_length = 0;
-  pixel_t *pixels_buffered = NULL;
+  pixel_t *pixels_buffered = NULL; // non serve più si può togliere
 
   uint64_t remaining_bytes = file_size_with_header;
   uint8_t is_last_frame = FALSE;
@@ -453,14 +454,15 @@ void convert_file(FILE *fp, const char *filename) {
         printf("[%2d]: %3u -> %s\n", i, image_data[i],
                uint8_t_to_binary_string(image_data[i]));
       }
-      break;
+      // break;
     }
 
     // Numero di buffers necessari per leggere i rimanenti bytes
-    /*uint16_t total_buffers = ceil((double)remaining_bytes / BUFFER_SIZE);
+    uint16_t total_buffers = ceil((double)remaining_bytes / BUFFER_SIZE);
+    uint8_t *buffer = NULL;
     for (uint16_t i = 0; i < total_buffers; i++) {
       uint16_t byte_to_reads = 0;
-      uint16_t pixel_pointer = 0;
+      // uint16_t pixel_pointer = 0;
 
       // leggo al massimo 4096 byte, se ce ne sono meno leggo solo quelli che
       // rimangono
@@ -469,8 +471,8 @@ void convert_file(FILE *fp, const char *filename) {
       else
         byte_to_reads = BUFFER_SIZE;
 
-      pixels_buffered = read_buffered_file(fp, &byte_to_reads, &pixel_pointer);
-    }*/
+      buffer = read_buffered_file(fp, &byte_to_reads);
+    }
   }
 
   // printf("Totale pixels: %d\n", pixel_pointer);
