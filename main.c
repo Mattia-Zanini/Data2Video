@@ -82,7 +82,6 @@ struct HEADER_INFO {
 const int width = WIDTH_DEFAULT;
 const int height = HEIGHT_DEFAULT;
 png_bytep image_data = NULL;
-// png_bytep *row_pointers = NULL;  // Puntatore per le righe dell'immagine
 png_byte *extension_name = NULL; // Puntatore per i caratteri dell'estensione
 header_info_t header_info;
 
@@ -121,7 +120,7 @@ char *uint8_t_to_binary_string(uint8_t value) {
 }
 
 uint32_t calculate_offset(const uint16_t row, const uint16_t column) {
-  return row * WIDTH_DEFAULT + column;
+  return row * width + column;
 }
 
 uint8_t *split_uint64_t_into_bytes(const uint64_t value) {
@@ -272,8 +271,74 @@ header_info_t predict_last_data_position(const long file_size_with_header,
   return info;
 }
 
+// Funzione per scrivere un file PNG
+void write_png_file(char *filename) {
+  FILE *fp = fopen(filename,
+                   "wb"); // Apre il file per la scrittura in modalità binaria
+  if (!fp)
+    exit(EXIT_FAILURE);
+
+  // Crea una struttura per scrivere il PNG
+  png_structp png =
+      png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+  if (!png)
+    exit(ERROR_PNG_STRUCT_WRITE_CREATION);
+
+  // Crea una struttura per le informazioni del PNG
+  png_infop info = png_create_info_struct(png);
+  if (!info)
+    exit(ERROR_PNG_INFO_STRUCT_CREATION);
+
+  // Imposta il salto in caso di errore
+  if (setjmp(png_jmpbuf(png))) {
+    png_destroy_write_struct(&png, &info);
+    fclose(fp);
+    exit(ERROR_PNG_WRITE_ELABORATION);
+  }
+
+  // Inizializza l'output per scrivere nel file
+  png_init_io(png, fp);
+
+  // Imposta le informazioni dell'immagine di output (larghezza, altezza,
+  // formato RGBA)
+  png_set_IHDR(png, info, width, height,
+               8,                            // 8 bit di profondità
+               PNG_COLOR_TYPE_RGBA,          // Formato colore RGBA
+               PNG_INTERLACE_NONE,           // Senza interlacciamento
+               PNG_COMPRESSION_TYPE_DEFAULT, // Compressione di default
+               PNG_FILTER_TYPE_DEFAULT       // Filtro di default
+  );
+  png_write_info(png, info); // Scrive le informazioni dell'immagine nel file
+
+  // Controlla se l'immagine è stata allocata
+  if (!image_data)
+    exit(EXIT_FAILURE);
+
+  // Crea un array di puntatori, uno per ogni riga
+  png_bytep *row_pointers = (png_bytep *)malloc(sizeof(png_bytep) * height);
+  if (!row_pointers) {
+    fclose(fp);
+    exit(ERROR_ROWS_NOT_ALLOCATED);
+  }
+
+  // Imposta ciascun puntatore per puntare all'inizio di ogni riga in image_data
+  for (int y = 0; y < height; y++)
+    row_pointers[y] = &(image_data[calculate_offset(y, 0) * BYTES_PER_PIXEL]);
+
+  // Scrive i dati dell'immagine
+  png_write_image(png, row_pointers);
+  png_write_end(png, NULL); // Termina la scrittura
+
+  // Libera la memoria dell'immagine
+  free(image_data);
+  fclose(fp);
+
+  // Libera le strutture allocate per la scrittura dell'immagine
+  png_destroy_write_struct(&png, &info);
+}
+
 // da finire
-void convert_file(FILE *fp, const char *filename) {
+void convert_file(FILE *fp, const char *filename, char *output) {
   // Alloca un array unidimensionale per memorizzare tutti i bytes dell'immagine
   image_data = (png_bytep)malloc(width * height * BYTES_PER_PIXEL);
 
@@ -423,81 +488,16 @@ void convert_file(FILE *fp, const char *filename) {
     }
   }
 
-  for (uint32_t i = 0; i < 8215; i++) {
-    printf("[%5d]: %3u -> %s -> %02X\n", i, image_data[i],
+  /*for (uint32_t i = 0; i < 4096 * 1000 + 23; i++) {
+    printf("[%7d]: %3u -> %s -> %02X\n", i, image_data[i],
            uint8_t_to_binary_string(image_data[i]), image_data[i]);
-  }
+  }*/
   // exit(EXIT_SUCCESS);
 
-  // printf("Totale pixels: %d\n", pixel_pointer);
-  /*for (int i = 0; i < pixel_pointer; i++) {
-    printf("%d = RGBA(%d, %d, %d, %d)\n", i, pixels_buffered[i].r,
-           pixels_buffered[i].g, pixels_buffered[i].b, pixels_buffered[i].a);
-  }*/
-
-  free(image_data);
-  fclose(fp);
+  write_png_file(output);
+  // free(image_data);
+  // fclose(fp);
 }
-
-// Funzione per scrivere un file PNG
-/*void write_png_file(char *filename) {
-  FILE *fp = fopen(filename,
-                   "wb"); // Apre il file per la scrittura in modalità binaria
-  if (!fp)
-    exit(EXIT_FAILURE);
-
-  // Crea una struttura per scrivere il PNG
-  png_structp png =
-      png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-  if (!png)
-    exit(ERROR_PNG_STRUCT_WRITE_CREATION);
-
-  // Crea una struttura per le informazioni del PNG
-  png_infop info = png_create_info_struct(png);
-  if (!info)
-    exit(ERROR_PNG_INFO_STRUCT_CREATION);
-
-  // Imposta il salto in caso di errore
-  if (setjmp(png_jmpbuf(png))) {
-    png_destroy_write_struct(&png, &info);
-    fclose(fp);
-    exit(ERROR_PNG_WRITE_ELABORATION);
-  }
-
-  // Inizializza l'output per scrivere nel file
-  png_init_io(png, fp);
-
-  // Imposta le informazioni dell'immagine di output (larghezza, altezza,
-  // formato RGBA)
-  png_set_IHDR(png, info, width, height,
-               8,                            // 8 bit di profondità
-               PNG_COLOR_TYPE_RGBA,          // Formato colore RGBA
-               PNG_INTERLACE_NONE,           // Senza interlacciamento
-               PNG_COMPRESSION_TYPE_DEFAULT, // Compressione di default
-               PNG_FILTER_TYPE_DEFAULT       // Filtro di default
-  );
-  png_write_info(png, info); // Scrive le informazioni dell'immagine nel file
-
-  // Controlla se le righe sono state allocate
-  if (!row_pointers)
-    exit(ERROR_ROWS_NOT_ALLOCATED);
-
-  // Scrive i dati dell'immagine
-  png_write_image(png, row_pointers);
-  png_write_end(png, NULL); // Termina la scrittura
-
-  // Libera la memoria delle righe allocate
-  for (int y = 0; y < height; y++) {
-    free(row_pointers[y]);
-  }
-  free(row_pointers);
-
-  // Chiude il file
-  fclose(fp);
-
-  // Libera le strutture allocate per la scrittura dell'immagine
-  png_destroy_write_struct(&png, &info);
-}*/
 
 // Non serve a molto questa funzione, è solo per debug
 void recover_filename(FILE *fp) {
@@ -598,7 +598,7 @@ int main(int argc, char *argv[]) {
   // printf("Extension name: %s\n", get_extension_string(argv[1]));
   // printf("Stringa randomica: %s\n", generate_random_string(10));
   printf("Dimensione del file = %lu bytes\n", get_file_size(fp));
-  convert_file(fp, argv[1]);
+  convert_file(fp, argv[1], argv[2]);
 
   /*
   FILE *temp_fp = tmpfile();
