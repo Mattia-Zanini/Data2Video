@@ -515,11 +515,11 @@ void convert_file(FILE *fp, const char *filename,
     // Ripulisco l'array
     memset(image_data, 0, width * height * BYTES_PER_PIXEL);
 
-    // Libero la memoria dell'immagine per la prossima iterazione
     free(output_filename);
     output_filename = NULL;
   }
 
+  // Libero la memoria dell'immagine
   free(image_data);
   image_data = NULL;
   fclose(fp);
