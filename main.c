@@ -378,6 +378,13 @@ void convert_file(FILE *fp, const char *filename,
     // Divido in bytes le informazioni dell'header, così le salvo sulla matrice
     // della prima immagine
     if (chunk == 0) {
+      // Situazione che si verifica se il file da convertire è più piccolo della
+      // dimensione che avrebbe un immagine 4k.
+      // In questo modo mi assicuro che l'array non si sporco di dati, quando ho
+      // allocato la memoria
+      if (is_last_frame)
+        memset(image_data, 0, width * height * BYTES_PER_PIXEL);
+
       // Formatto in un uint32_t le informazioni inerenti l'ultima riga,
       // all'ultima colonna, ultimo canale e lunghezza dell'estensione
       uint32_t tmp = 0;
@@ -505,6 +512,7 @@ void convert_file(FILE *fp, const char *filename,
     sprintf(output_filename, "%s_%llu.png", base_output_filename, chunk);
     write_png_file(output_filename);
 
+    // Ripulisco l'array
     memset(image_data, 0, width * height * BYTES_PER_PIXEL);
 
     // Libero la memoria dell'immagine per la prossima iterazione
