@@ -228,11 +228,14 @@ header_info_t predict_last_data_position(const long file_size_with_header,
   header_info_t info;
 
   // Numero di chunk completi
-  const uint64_t complete_chunk =
+  const uint64_t complete_chunks =
       floor((double)file_size_with_header / PNG_TOTAL_BYTES);
   // Numeri di bytes che contiene l'ultimo chunk
   const uint32_t bytes_last_chunk =
-      file_size_with_header - complete_chunk * PNG_TOTAL_BYTES;
+      (PNG_TOTAL_BYTES >= file_size_with_header)
+          ? file_size_with_header
+          : file_size_with_header - complete_chunks * PNG_TOTAL_BYTES;
+
   // Numero di righe complete dell'ultimo chunk
   const uint16_t complete_last_chunk_rows =
       floor((double)bytes_last_chunk / BYTES_PER_ROW);
@@ -241,29 +244,24 @@ header_info_t predict_last_data_position(const long file_size_with_header,
       bytes_last_chunk - complete_last_chunk_rows * BYTES_PER_ROW;
   // Numeri di pixels completi nell'ultima riga del'ultimo chunk
   const uint16_t complete_last_row_pixels =
-      floor((double)bytes_last_chunk_row / BYTES_PER_PIXEL);
+      floor((double)(BYTES_PER_ROW - bytes_last_chunk_row) / BYTES_PER_PIXEL);
 
   // potrebbe essere zero, se ho un numero giusto di bytes che riempono i pixels
   // (c'è che non ci sono pixels parzialmente valorizzati)
   const uint16_t remaining_bytes_last_row =
-      bytes_last_chunk_row - complete_last_row_pixels * BYTES_PER_PIXEL;
+      BYTES_PER_ROW - complete_last_row_pixels * BYTES_PER_PIXEL;
 
-  // indice dell'ultimo chunk
-  const uint64_t last_chunk = complete_chunk - 1;
   // indice dell'ultima riga
-  const uint16_t last_row = (bytes_last_chunk_row == 0)
-                                ? complete_last_chunk_rows
-                                : complete_last_chunk_rows + 1;
+  const uint16_t last_row = height - (height - complete_last_chunk_rows);
   // indice dell'ultima colonna
-  const uint16_t last_column = (remaining_bytes_last_row == 0)
-                                   ? complete_last_row_pixels
-                                   : complete_last_row_pixels + 1;
+  const uint16_t last_column =
+      width - (width - complete_last_row_pixels - remaining_bytes_last_row);
   // indice dell'ultimo canale
   // 0 = alpha, 1 = red, 2 = green, 3 = blue
   const uint8_t last_channel = remaining_bytes_last_row;
 
-  info.last_byte_column = last_column - 1;
-  info.last_byte_row = last_row - 1;
+  info.last_byte_column = last_column;
+  info.last_byte_row = last_row;
   // posiziono i bit che rappresentano l'ultimo canale nei bit più
   // significativi, stabilito dalla formattazione
   info.last_channel_and_extension_length = last_channel << 6;
@@ -338,7 +336,8 @@ void write_png_file(char *filename) {
 }
 
 // da finire
-void convert_file(FILE *fp, const char *filename, char *base_output_filename) {
+void convert_file(FILE *fp, const char *filename,
+                  const char *base_output_filename) {
   // Alloca un array unidimensionale per memorizzare tutti i bytes dell'immagine
   image_data = (png_bytep)malloc(width * height * BYTES_PER_PIXEL);
 
@@ -356,6 +355,8 @@ void convert_file(FILE *fp, const char *filename, char *base_output_filename) {
   header_info.last_frame = n_chunks - 1;
   printf("Total frames: %llu\nLast frame index: %llu\n",
          header_info.total_frames, header_info.last_frame);
+  printf("Dimensione del file = %lu bytes\n", get_file_size(fp));
+  printf("Dimensione del file con info = %llu bytes\n", file_size_with_header);
 
   // valori default iniziali
   header_info.last_byte_column = 0;
@@ -363,7 +364,7 @@ void convert_file(FILE *fp, const char *filename, char *base_output_filename) {
   header_info.last_channel_and_extension_length = 0;
   pixel_t *pixels_buffered = NULL; // non serve più si può togliere
 
-  uint64_t remaining_bytes = file_size_with_header;
+  uint64_t remaining_bytes = file_size;
   uint8_t is_last_frame = FALSE;
   uint32_t current_frame_bytes_to_read = 0;
   for (uint64_t chunk = 0; chunk < n_chunks; chunk++) {
@@ -462,6 +463,11 @@ void convert_file(FILE *fp, const char *filename, char *base_output_filename) {
       exit(EXIT_SUCCESS);*/
     }
 
+    /*if (chunk != 0) {
+      printf("Bytes rimanenti: %llu\n", remaining_bytes);
+      exit(EXIT_SUCCESS);
+    }*/
+
     // Numero di buffers necessari per leggere i rimanenti bytes
     uint16_t total_buffers =
         ceil((double)current_frame_bytes_to_read / BUFFER_SIZE);
@@ -480,21 +486,34 @@ void convert_file(FILE *fp, const char *filename, char *base_output_filename) {
 
       buffer = read_buffered_file(fp, &byte_to_reads);
       current_frame_bytes_to_read -= byte_to_reads;
+      remaining_bytes -= byte_to_reads;
+      // printf("Buffer numero %4d, bytes letti: %u\n", i, byte_to_reads);
 
       // salvo il buffer di dati che ho appena letto
       for (uint16_t j = 0; j < byte_to_reads; j++)
         image_data[byte_pointer++] = buffer[j];
       free(buffer);
+      buffer = NULL;
     }
 
     for (uint32_t i = 0; i < HEADER_INFO_LENGTH + ext_length; i++) {
-      printf("[%7d]: %3u -> %s -> %02X\n", i, image_data[i],
+      printf("[%4d]: %3u -> %s -> %02X\n", i, image_data[i],
              uint8_t_to_binary_string(image_data[i]), image_data[i]);
     }
-    write_png_file(base_output_filename);
+
+    char *output_filename = (char *)malloc(sizeof(char));
+    sprintf(output_filename, "%s_%llu.png", base_output_filename, chunk);
+    write_png_file(output_filename);
+
+    memset(image_data, 0, width * height * BYTES_PER_PIXEL);
+
+    // Libero la memoria dell'immagine per la prossima iterazione
+    free(output_filename);
+    output_filename = NULL;
   }
 
   free(image_data);
+  image_data = NULL;
   fclose(fp);
 }
 
@@ -551,21 +570,36 @@ char *generate_random_string(const uint8_t length) {
 
 // Crea una cartella temporanea
 char *create_temp_dir() {
-  // Create the temporary directory
+  // Template per il nome della directory temporanea
   char template[] = "/tmp/tmpdir.XXXXXX";
-  char *tmp_dirname = mkdtemp(template);
 
-  if (tmp_dirname == NULL) {
-    perror("tempdir: error: Could not create tmp directory");
+  // Alloco memoria per il nome della directory temporanea
+  char *tmp_dirname = (char *)malloc(strlen(template) + 1);
+  if (!tmp_dirname) {
+    perror("malloc error: ");
     exit(EXIT_FAILURE);
   }
 
-  // Change directory
+  // Copio il template nella memoria allocata
+  strcpy(tmp_dirname, template);
+
+  // Creazione della directory temporanea
+  if (mkdtemp(tmp_dirname) == NULL) {
+    perror("tempdir: error: Could not create tmp directory");
+    // Libero la memoria allocata in caso di errore
+    free(tmp_dirname);
+    exit(EXIT_FAILURE);
+  }
+
+  // Cambio della directory
   if (chdir(tmp_dirname) == -1) {
     perror("tempdir: error ->");
+    // Libero la memoria allocata in caso di errore
+    free(tmp_dirname);
     exit(EXIT_FAILURE);
   }
 
+  // Restituisco il puntatore al percorso temporaneo
   return tmp_dirname;
 }
 
@@ -574,9 +608,13 @@ int delete_temp_dir(char *tmp_dirname) {
   if (nftw(tmp_dirname, remove_callback, FOPEN_MAX,
            FTW_DEPTH | FTW_MOUNT | FTW_PHYS) == -1) {
     perror("tempdir: error ->");
+    // Libero la memoria allocata dopo aver rimosso la directory
+    free(tmp_dirname);
     exit(EXIT_FAILURE);
   }
 
+  // Libero la memoria allocata dopo aver cancellato la directory
+  free(tmp_dirname);
   return 0;
 }
 
@@ -596,7 +634,7 @@ int main(int argc, char *argv[]) {
   // printf("Extension length: %d\n", get_extension_length(argv[1]));
   // printf("Extension name: %s\n", get_extension_string(argv[1]));
   // printf("Stringa randomica: %s\n", generate_random_string(10));
-  printf("Dimensione del file = %lu bytes\n", get_file_size(fp));
+
   convert_file(fp, argv[1], argv[2]);
 
   /*
@@ -616,13 +654,11 @@ int main(int argc, char *argv[]) {
   fclose(temp_fp2);
   */
 
-  /*
-  char *temp_dir = create_temp_dir();
+  // Su macos la creazione, il cambio di working directory e la cancellazione
+  // del file funzionano correttamente
+  /*char *temp_dir = create_temp_dir();
   printf("Cartella creata: %s\n", temp_dir);
-  // int a;
-  // scanf("%d", &a);
-  delete_temp_dir(temp_dir);
-  */
+  delete_temp_dir(temp_dir);*/
 
   return EXIT_SUCCESS;
 }
