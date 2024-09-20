@@ -44,10 +44,10 @@
 #define ERROR_PNG_WRITE_ELABORATION 4
 #define ERROR_ROWS_NOT_ALLOCATED 5
 
-// Risoluzione di default = 4K (Ultra HD) -> 33 177 600 bytes, 265 420 800 bits
+// Risoluzione di default = 4K (Ultra HD) in RGB -> 24 883 200 bytes
 #define WIDTH_DEFAULT 3840
 #define HEIGHT_DEFAULT 2160
-#define BYTES_PER_PIXEL 4
+#define BYTES_PER_PIXEL 3
 #define BYTES_PER_ROW (WIDTH_DEFAULT * BYTES_PER_PIXEL)
 #define BYTES_PER_ROW (WIDTH_DEFAULT * BYTES_PER_PIXEL)
 #define PNG_TOTAL_PIXELS (WIDTH_DEFAULT * HEIGHT_DEFAULT)
@@ -248,12 +248,12 @@ header_info_t predict_last_data_position(const long file_size_with_header,
   const uint16_t remaining_bytes_last_row =
       bytes_last_chunk_row - complete_last_row_pixels * BYTES_PER_PIXEL;
 
-  if (remaining_bytes_last_row == 0) {
+  /*if (remaining_bytes_last_row == 0) {
     info.last_byte_column = 2160;
     info.last_byte_row = 3840;
     info.last_channel_and_extension_length = extension_length;
     return info;
-  }
+  }*/
 
   // indice dell'ultima riga
   const uint16_t last_row =
@@ -273,6 +273,14 @@ header_info_t predict_last_data_position(const long file_size_with_header,
   // significativi, stabilito dalla formattazione
   info.last_channel_and_extension_length = last_channel << 6;
   info.last_channel_and_extension_length += extension_length;
+
+  // Ho messo if qui solo per ottenere informazioni di debug, quando è completo
+  // lo tolgo e lo rimpiazzo con quello che ho commentato sopra
+  if (remaining_bytes_last_row == 0) {
+    info.last_byte_column = 2160;
+    info.last_byte_row = 3840;
+    info.last_channel_and_extension_length = extension_length;
+  }
 
   printf("\n(DEBUG)\n \
   complete_chunks: %llu\n \
@@ -323,7 +331,7 @@ void write_png_file(char *filename) {
   // formato RGBA)
   png_set_IHDR(png, info, width, height,
                8,                            // 8 bit di profondità
-               PNG_COLOR_TYPE_RGBA,          // Formato colore RGBA
+               PNG_COLOR_TYPE_RGB,           // Formato colore RGB
                PNG_INTERLACE_NONE,           // Senza interlacciamento
                PNG_COMPRESSION_TYPE_DEFAULT, // Compressione di default
                PNG_FILTER_TYPE_DEFAULT       // Filtro di default
