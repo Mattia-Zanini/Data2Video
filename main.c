@@ -389,32 +389,20 @@ void convert_file(FILE *fp, const char *filename,
   uint8_t is_last_frame = FALSE;
   uint32_t current_frame_bytes_to_read = 0;
   for (uint64_t chunk = 0; chunk < n_chunks; chunk++) {
-    // Se siamo nel primo chunk e c'è abbastanza spazio per l'intero frame,
-    // inclusi header e lunghezza dell'estensione
-    if (chunk == 0 &&
-        PNG_TOTAL_BYTES > (remaining_bytes + HEADER_INFO_LENGTH + ext_length)) {
-      is_last_frame = TRUE;
-      // Imposta i bytes da leggere aggiungendo l'header e la lunghezza
-      // dell'estensione
-      current_frame_bytes_to_read =
-          remaining_bytes + HEADER_INFO_LENGTH + ext_length;
-      // In questo modo mi assicuro che l'array non sia sporco, effettuo
-      // questa operazione solo se non scrivo su tutto l'array
+    // Se è il primo chunk, aggiungi la dimensione dell'header e dell'estensione
+    if (chunk == 0)
+      remaining_bytes += HEADER_INFO_LENGTH + ext_length;
+
+    // Se i bytes rimanenti più l'header e l'estensione sono minori del limite
+    // del chunk, solo nel primo chunk, sennò controlla solo se i bytes
+    // rimanenti da leggere sono minori dei bytes di una singola immagine
+    if (PNG_TOTAL_BYTES > remaining_bytes) {
+      is_last_frame = TRUE;                          // Questo è l'ultimo frame
+      current_frame_bytes_to_read = remaining_bytes; // Leggi i bytes rimanenti
+      // Pulisci l'array solo se non riempie tutto l'array (evita dati sporchi)
       memset(image_data, 0, width * height * BYTES_PER_PIXEL);
-      // Se non è il primo chunk e c'è abbastanza spazio per leggere i bytes
-      // rimanenti
-    } else if (chunk != 0 && PNG_TOTAL_BYTES > remaining_bytes) {
-      is_last_frame = TRUE;
-      // Imposta il numero di bytes rimanenti da leggere per questo frame
-      current_frame_bytes_to_read = remaining_bytes;
-      // In questo modo mi assicuro che l'array non sia sporco, effettuo
-      // questa operazione solo se non scrivo su tutto l'array
-      memset(image_data, 0, width * height * BYTES_PER_PIXEL);
-      // Se non c'è abbastanza spazio, leggi un chunk standard di dimensione
-      // PNG_TOTAL_BYTES
     } else {
-      // Imposta il numero di bytes da leggere per il chunk corrente (standard)
-      current_frame_bytes_to_read = PNG_TOTAL_BYTES;
+      current_frame_bytes_to_read = PNG_TOTAL_BYTES; // Leggi un chunk completo
     }
 
     printf("In questo frame leggo %u bytes\n", current_frame_bytes_to_read);
