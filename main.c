@@ -234,7 +234,7 @@ header_info_t predict_last_data_position(const long file_size_with_header,
   const uint32_t bytes_last_chunk =
       (PNG_TOTAL_BYTES >= file_size_with_header)
           ? file_size_with_header
-          : file_size_with_header - complete_chunks * PNG_TOTAL_BYTES;
+          : file_size_with_header - (complete_chunks * PNG_TOTAL_BYTES);
 
   // Numero di righe complete dell'ultimo chunk
   const uint16_t complete_last_chunk_rows =
@@ -244,18 +244,26 @@ header_info_t predict_last_data_position(const long file_size_with_header,
       bytes_last_chunk - complete_last_chunk_rows * BYTES_PER_ROW;
   // Numeri di pixels completi nell'ultima riga del'ultimo chunk
   const uint16_t complete_last_row_pixels =
-      floor((double)(BYTES_PER_ROW - bytes_last_chunk_row) / BYTES_PER_PIXEL);
-
-  // potrebbe essere zero, se ho un numero giusto di bytes che riempono i pixels
-  // (c'è che non ci sono pixels parzialmente valorizzati)
+      floor((double)bytes_last_chunk_row / BYTES_PER_PIXEL);
+  // bytes rimanenti escludendo i pixels completi, all'ultima riga
   const uint16_t remaining_bytes_last_row =
-      BYTES_PER_ROW - complete_last_row_pixels * BYTES_PER_PIXEL;
+      bytes_last_chunk_row - complete_last_row_pixels * BYTES_PER_PIXEL;
+
+  if (remaining_bytes_last_row == 0) {
+    info.last_byte_column = 2160;
+    info.last_byte_row = 3840;
+    info.last_channel_and_extension_length = extension_length;
+    return info;
+  }
 
   // indice dell'ultima riga
-  const uint16_t last_row = height - (height - complete_last_chunk_rows);
+  const uint16_t last_row =
+      ((complete_last_chunk_rows > 0 && bytes_last_chunk_row == 0) ||
+       (complete_last_chunk_rows == 0 && bytes_last_chunk_row > 0))
+          ? complete_last_chunk_rows
+          : complete_last_chunk_rows + 1;
   // indice dell'ultima colonna
-  const uint16_t last_column =
-      width - (width - complete_last_row_pixels - remaining_bytes_last_row);
+  const uint16_t last_column = complete_last_row_pixels;
   // indice dell'ultimo canale
   // 0 = alpha, 1 = red, 2 = green, 3 = blue
   const uint8_t last_channel = remaining_bytes_last_row;
@@ -266,6 +274,22 @@ header_info_t predict_last_data_position(const long file_size_with_header,
   // significativi, stabilito dalla formattazione
   info.last_channel_and_extension_length = last_channel << 6;
   info.last_channel_and_extension_length += extension_length;
+
+  printf("(DEBUG)\n \
+  complete_chunks:%llu\n \
+  bytes_last_chunk:%u\n \
+  complete_last_chunk_rows:%u \
+  bytes_last_chunk_row:%u\n \
+  complete_last_row_pixels:%u\n \
+  remaining_bytes_last_row:%u\n \
+  last_row:%u\n \
+  last_column:%u\n \
+  last_channel:%u\n \
+  (END DEBUG) \
+  ",
+         complete_chunks, bytes_last_chunk, complete_last_chunk_rows,
+         bytes_last_chunk_row, complete_last_row_pixels,
+         remaining_bytes_last_row, last_row, last_column, last_channel);
 
   return info;
 }
@@ -368,23 +392,26 @@ void convert_file(FILE *fp, const char *filename,
   uint8_t is_last_frame = FALSE;
   uint32_t current_frame_bytes_to_read = 0;
   for (uint64_t chunk = 0; chunk < n_chunks; chunk++) {
+    // Problema: Il file 34mb_random non viene letto completamente.
+    // Il file contiene 33 177 577 bytes, meno di 33 177 600, quindi entra nel
+    // primo ramo dell'if. Tuttavia, sottraendo 23 bytes (header + estensione)
+    // si ottiene 33 177 554 bytes, che è meno di quanto dovrei leggere,
+    // causando la lettura incompleta del file.
     if (PNG_TOTAL_BYTES >= remaining_bytes) {
       is_last_frame = TRUE;
       current_frame_bytes_to_read = remaining_bytes;
+      // In questo modo mi assicuro che l'array non sia sporco, effettuo questa
+      // operazione solo se non scrivo su tutto l'array
+      memset(image_data, 0, width * height * BYTES_PER_PIXEL);
     } else {
       current_frame_bytes_to_read = PNG_TOTAL_BYTES;
     }
 
+    printf("In questo frame leggo %u bytes\n", current_frame_bytes_to_read);
+
     // Divido in bytes le informazioni dell'header, così le salvo sulla matrice
     // della prima immagine
     if (chunk == 0) {
-      // Situazione che si verifica se il file da convertire è più piccolo della
-      // dimensione che avrebbe un immagine 4k.
-      // In questo modo mi assicuro che l'array non si sporco di dati, quando ho
-      // allocato la memoria
-      if (is_last_frame)
-        memset(image_data, 0, width * height * BYTES_PER_PIXEL);
-
       // Formatto in un uint32_t le informazioni inerenti l'ultima riga,
       // all'ultima colonna, ultimo canale e lunghezza dell'estensione
       uint32_t tmp = 0;
@@ -479,6 +506,8 @@ void convert_file(FILE *fp, const char *filename,
     uint16_t total_buffers =
         ceil((double)current_frame_bytes_to_read / BUFFER_SIZE);
     printf("Total buffers: %u\n", total_buffers);
+    printf("Current frame, bytes to reads from file: %u\n",
+           current_frame_bytes_to_read);
     uint8_t *buffer = NULL;
     uint16_t byte_to_reads = 0;
     // punto al byte successivo a tutte le informazioni iniziali
@@ -494,29 +523,39 @@ void convert_file(FILE *fp, const char *filename,
       buffer = read_buffered_file(fp, &byte_to_reads);
       current_frame_bytes_to_read -= byte_to_reads;
       remaining_bytes -= byte_to_reads;
-      // printf("Buffer numero %4d, bytes letti: %u\n", i, byte_to_reads);
+
+      // Per fare prima e non stampare i valori intermedi
+      if (i < 2 || !(i < total_buffers - 2))
+        printf("Buffer numero %4d, bytes letti: %u\n", i, byte_to_reads);
 
       // salvo il buffer di dati che ho appena letto
       for (uint16_t j = 0; j < byte_to_reads; j++)
         image_data[byte_pointer++] = buffer[j];
+
       free(buffer);
       buffer = NULL;
     }
 
-    for (uint32_t i = 0; i < HEADER_INFO_LENGTH + ext_length; i++) {
+    /*for (uint32_t i = 0; i < HEADER_INFO_LENGTH + ext_length; i++) {
       printf("[%4d]: %3u -> %s -> %02X\n", i, image_data[i],
              uint8_t_to_binary_string(image_data[i]), image_data[i]);
-    }
+    }*/
 
     char *output_filename = (char *)malloc(sizeof(char));
     sprintf(output_filename, "%s_%llu.png", base_output_filename, chunk);
     write_png_file(output_filename);
 
-    // Ripulisco l'array
-    memset(image_data, 0, width * height * BYTES_PER_PIXEL);
-
     free(output_filename);
     output_filename = NULL;
+
+    for (uint32_t i = 0; i < PNG_TOTAL_BYTES; i++) {
+      printf("[%8u]: %3u -> %s -> %02X\n", i, image_data[i],
+             uint8_t_to_binary_string(image_data[i]), image_data[i]);
+
+      // Per fare prima e non stampare tutti i valori intermedi
+      if (i == 25)
+        i = PNG_TOTAL_BYTES - 30;
+    }
   }
 
   // Libero la memoria dell'immagine
