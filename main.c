@@ -26,7 +26,6 @@
  * dell'estensione del file che sto trasformando.
  */
 
-#include <errno.h> // Include per la gestione degli errori (definisce variabili per gli errori di sistema come 'errno')
 #include <fcntl.h> // Include per la gestione dei file (fornisce funzioni come open(), read(), write(), etc.)
 #include <ftw.h> // Include per funzioni che permettono di eseguire operazioni su file e directory come ftw() (file tree walk)
 #include <math.h> // Include per funzioni matematiche come pow(), sqrt(), sin(), cos(), etc.
@@ -275,18 +274,16 @@ header_info_t predict_last_data_position(const long file_size_with_header,
   info.last_channel_and_extension_length = last_channel << 6;
   info.last_channel_and_extension_length += extension_length;
 
-  printf("(DEBUG)\n \
-  complete_chunks:%llu\n \
-  bytes_last_chunk:%u\n \
-  complete_last_chunk_rows:%u \
-  bytes_last_chunk_row:%u\n \
-  complete_last_row_pixels:%u\n \
-  remaining_bytes_last_row:%u\n \
-  last_row:%u\n \
-  last_column:%u\n \
-  last_channel:%u\n \
-  (END DEBUG) \
-  ",
+  printf("\n(DEBUG)\n \
+  complete_chunks: %llu\n \
+  bytes_last_chunk: %u\n \
+  complete_last_chunk_rows: %u\n \
+  bytes_last_chunk_row: %u\n \
+  complete_last_row_pixels: %u\n \
+  remaining_bytes_last_row: %u\n \
+  last_row: %u\n \
+  last_column: %u\n \
+  last_channel: %u\n(END DEBUG)\n\n",
          complete_chunks, bytes_last_chunk, complete_last_chunk_rows,
          bytes_last_chunk_row, complete_last_row_pixels,
          remaining_bytes_last_row, last_row, last_column, last_channel);
@@ -392,18 +389,31 @@ void convert_file(FILE *fp, const char *filename,
   uint8_t is_last_frame = FALSE;
   uint32_t current_frame_bytes_to_read = 0;
   for (uint64_t chunk = 0; chunk < n_chunks; chunk++) {
-    // Problema: Il file 34mb_random non viene letto completamente.
-    // Il file contiene 33 177 577 bytes, meno di 33 177 600, quindi entra nel
-    // primo ramo dell'if. Tuttavia, sottraendo 23 bytes (header + estensione)
-    // si ottiene 33 177 554 bytes, che è meno di quanto dovrei leggere,
-    // causando la lettura incompleta del file.
-    if (PNG_TOTAL_BYTES >= remaining_bytes) {
+    // Se siamo nel primo chunk e c'è abbastanza spazio per l'intero frame,
+    // inclusi header e lunghezza dell'estensione
+    if (chunk == 0 &&
+        PNG_TOTAL_BYTES > (remaining_bytes + HEADER_INFO_LENGTH + ext_length)) {
       is_last_frame = TRUE;
-      current_frame_bytes_to_read = remaining_bytes;
-      // In questo modo mi assicuro che l'array non sia sporco, effettuo questa
-      // operazione solo se non scrivo su tutto l'array
+      // Imposta i bytes da leggere aggiungendo l'header e la lunghezza
+      // dell'estensione
+      current_frame_bytes_to_read =
+          remaining_bytes + HEADER_INFO_LENGTH + ext_length;
+      // In questo modo mi assicuro che l'array non sia sporco, effettuo
+      // questa operazione solo se non scrivo su tutto l'array
       memset(image_data, 0, width * height * BYTES_PER_PIXEL);
+      // Se non è il primo chunk e c'è abbastanza spazio per leggere i bytes
+      // rimanenti
+    } else if (chunk != 0 && PNG_TOTAL_BYTES > remaining_bytes) {
+      is_last_frame = TRUE;
+      // Imposta il numero di bytes rimanenti da leggere per questo frame
+      current_frame_bytes_to_read = remaining_bytes;
+      // In questo modo mi assicuro che l'array non sia sporco, effettuo
+      // questa operazione solo se non scrivo su tutto l'array
+      memset(image_data, 0, width * height * BYTES_PER_PIXEL);
+      // Se non c'è abbastanza spazio, leggi un chunk standard di dimensione
+      // PNG_TOTAL_BYTES
     } else {
+      // Imposta il numero di bytes da leggere per il chunk corrente (standard)
       current_frame_bytes_to_read = PNG_TOTAL_BYTES;
     }
 
